@@ -1,0 +1,29 @@
+# Environment
+.env
+venv
+.venv
+
+# Cache
+__pycache__
+**/data_storage/
+**/chroma
+logs
+
+# Datasets and generated artifacts — large, reproducible from data_processing.py
+# and ground_truth.py. Only the *_results/ JSON below is committed.
+dataset/
+generated_queries/
+ground_truth/
+
+# Documents
+*.pdf
+*.json
+*.jsonl
+
+# Benchmark results ARE the output worth keeping: they are what the README cites.
+!sweep_results/**
+!throughput_results/**
+!upload_results/**
+
+# Vespa config is config, not a result.
+!utils/vespa_config/**

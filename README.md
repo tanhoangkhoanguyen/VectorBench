@@ -69,33 +69,31 @@ Note: **Weaviate is pinned to client v3**. Client v4 contains potential risk.
 
 ## Running the benchmark
 
-All commands run **inside the `la-documedai` container** (it has the clients, the embedding model, and the dataset mount). DB selection is via `BENCH_DB` (or `--db`); each step writes a per-DB JSON result so every number records which engine produced it.
+The engines run in Docker; the benchmark driver runs on the host. DB selection is via `BENCH_DB` (or `--db`); each step writes a per-DB JSON result so every number records which engine produced it.
 
 ```bash
-# 0. Bring up the lab stack with equal resource limits
-docker compose --profile vectordb-lab up -d --build --wait la-qdrant la-chroma la-weaviate la-milvus la-vespa
-docker compose --profile vectordb-lab up -d la-documedai
-docker compose exec la-documedai pip install -r /backend/requirements-dev.txt
+# 0. Bring up the five engines with equal resource limits
+docker compose up -d --build --wait
+
+# Python side (the driver, the embedding model, the clients)
+pip install -r requirements.txt
 
 # Vespa only: deploy the application package once (adds the doc_id field)
 docker compose exec la-vespa vespa deploy --wait 300 /app
 
-# 1. Exact-kNN ground truth — ONCE (depends only on corpus+queries+cosine)
-docker compose exec -d la-documedai sh -c "cd /backend && python -m VectorBench.ground_truth --top-k 100 2>> /backend/logs/gt_stderr.log"
+# 1. Exact-kNN ground truth - ONCE (depends only on corpus+queries+cosine)
+python -m ground_truth --top-k 100
 
-docker compose exec la-documedai tail -f /backend/logs/vectordb_lab_ground_truth_20260626.log
-
-# 2. Per engine: upload → sweep (equal-recall config) → open-loop throughput
-#    If upload exceeds its 1h budget, it exits non-zero and writes {"timed_out": true}; the `|| continue` then skips sweep + throughput for that engine and moves to the next.
+# 2. Per engine: upload -> sweep (equal-recall config) -> open-loop throughput
+#    If upload exceeds its 1h budget, it exits non-zero and writes {"timed_out": true};
+#    the `continue` then skips sweep + throughput for that engine and moves to the next.
 $databases = "qdrant", "milvus", "weaviate", "chromadb", "vespa"
 foreach ($db in $databases) {
-  docker compose exec -e BENCH_DB=$db -w /backend la-documedai `
-    python -m VectorBench.data_uploading
+  $env:BENCH_DB = $db
+  python -m data_uploading
   if (-not $?) { continue }
-  docker compose exec -e BENCH_DB=$db -w /backend la-documedai `
-    python -m VectorBench.sweep --k 10 --recall-target 0.95
-  docker compose exec -e BENCH_DB=$db -w /backend la-documedai `
-    python -m VectorBench.throughput --qps 50 100 200 400 800 --duration 30
+  python -m sweep --k 10 --recall-target 0.95
+  python -m throughput --qps 50 100 200 400 800 --duration 30
 }
 ```
 
@@ -178,7 +176,7 @@ Full per-rung ladders in `throughput_results/{db}.json`.
 
 ## Folder structure
 ```
-VectorBench/
+VectorBench/            # repo root
 ├── dataset/                # 1M-vector corpus (jsonl)
 ├── generated_queries/      # query set (jsonl)
 ├── ground_truth/           # exact-kNN ground truth (generated)
@@ -193,15 +191,24 @@ VectorBench/
 ├── sweep.py                # equal-recall latency sweep
 ├── throughput.py           # open-loop fixed-QPS throughput
 │
+├── logger.py               # vendored from DocuMedAI
+├── docker-compose.yml      # the five engines, equal budgets
+├── requirements.txt
+│
 └── utils/
     ├── registry.py         # DB selection (BENCH_DB) + shared constants
     ├── vespa_config/
     ├── data_storage/
     ├── chromadb_client.py
     ├── milvus_client.py
+    ├── qdrant_client.py    # vendored from DocuMedAI
+    ├── pattern_cipher.py   # vendored from DocuMedAI
     ├── vespa_client.py
     └── weaviate_client.py
 ```
 
-The Qdrant client is the exception: it lives in `backend/utils/qdrant_client.py` because the
-app runs on it too. That keeps this lab detachable — nothing here is imported by production.
+`utils/qdrant_client.py` and `utils/pattern_cipher.py` are **copies** of DocuMedAI's
+production files, vendored here when this lab was split into its own repo so it runs
+standalone. They are not synced: DocuMedAI owns the originals, and this lab is a finished
+measurement rather than a consumer that must track them. If a benchmark is ever re-run
+against a changed client, re-copy deliberately and say so alongside the results.

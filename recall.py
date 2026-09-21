@@ -9,8 +9,8 @@ This is serial (one query at a time) on purpose: it isolates pure search latency
 Concurrency/throughput is measured separately by throughput.py (open-loop fixed-QPS).
 """
 from logger import get_logger
-from VectorBench.utils import registry
-from VectorBench.ground_truth import load_queries, OUT_PATH
+from utils import registry
+from ground_truth import load_queries, OUT_PATH
 
 import time, json, statistics
 import numpy as np

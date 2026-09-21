@@ -8,11 +8,11 @@ import os
 import random
 from typing import List
 
-from VectorBench.utils.chromadb_client import get_chromadb_client
-from VectorBench.utils.milvus_client import get_milvus_client
+from utils.chromadb_client import get_chromadb_client
+from utils.milvus_client import get_milvus_client
 from utils.qdrant_client import get_qdrant_client
-from VectorBench.utils.vespa_client import get_vespa_client
-from VectorBench.utils.weaviate_client import get_weaviate_client
+from utils.vespa_client import get_vespa_client
+from utils.weaviate_client import get_weaviate_client
 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 EMBEDDING_DIMENSION = 384

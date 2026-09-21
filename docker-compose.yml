@@ -1,0 +1,109 @@
+# VectorBench — the five engines under test, standalone.
+#
+#   docker compose up -d --build --wait
+#
+# Fairness invariant: every engine gets the SAME budget (mem_limit 8g, cpus 4.0).
+# A benchmark that gives one engine more memory measures the budget, not the
+# engine, so do not tune these per service.
+#
+# Image pins match the Jun 2026 run recorded in sweep_results/ and
+# throughput_results/. Bumping one invalidates those numbers — re-run the
+# benchmark rather than editing the JSON.
+
+services:
+  la-qdrant:
+    image: qdrant/qdrant:v1.18.2
+    restart: unless-stopped
+    container_name: vb-qdrant
+    ports:
+      - "6333:6333"
+    networks:
+      - vectorbench-net
+    volumes:
+      - ./utils/data_storage/qdrant_data:/qdrant/storage
+    mem_limit: 8g
+    cpus: 4.0
+
+  la-milvus:
+    image: milvusdb/milvus:v2.6.18
+    container_name: vb-milvus
+    command: milvus run standalone
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    environment:
+      ETCD_USE_EMBED: "true"
+      ETCD_DATA_DIR: /var/lib/milvus/etcd
+      ETCD_CONFIG_PATH: /milvus/configs/advanced/etcd.yaml
+      COMMON_STORAGETYPE: local
+      DEPLOY_MODE: STANDALONE
+      MILVUS_STREAMING_SERVICE_ENABLED: "false"
+      COMMON_STORAGE_ENABLEV2: "false"
+    networks:
+      - vectorbench-net
+    volumes:
+      - ./utils/data_storage/milvus_data:/var/lib/milvus
+    mem_limit: 8g
+    cpus: 4.0
+
+  la-vespa:
+    image: vespaengine/vespa:8.709.19
+    restart: unless-stopped
+    container_name: vb-vespa
+    hostname: vespa-container
+    ports:
+      - "8080:8080"
+      - "19071:19071"
+    networks:
+      - vectorbench-net
+    volumes:
+      - ./utils/vespa_config:/app
+      - ./utils/data_storage/vespa_data:/opt/vespa/var
+    mem_limit: 8g
+    cpus: 4.0
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:19071/state/v1/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      # Vespa is slow to come up; a shorter start_period reports it unhealthy
+      # while it is still booting normally.
+      start_period: 360s
+
+  la-weaviate:
+    image: semitechnologies/weaviate:1.37.9
+    container_name: vb-weaviate
+    restart: unless-stopped
+    ports:
+      - "8083:8080"
+    environment:
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
+      # No vectorizer module: vectors are supplied by the benchmark, so the
+      # engine must never embed anything itself.
+      ENABLE_MODULES: ""
+      DEFAULT_VECTORIZER_MODULE: ""
+      CLUSTER_HOSTNAME: "node1"
+    networks:
+      - vectorbench-net
+    volumes:
+      - ./utils/data_storage/weaviate_data:/var/lib/weaviate
+    mem_limit: 8g
+    cpus: 4.0
+
+  la-chroma:
+    image: chromadb/chroma:1.5.9
+    container_name: vb-chroma
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    networks:
+      - vectorbench-net
+    volumes:
+      - ./utils/data_storage/chroma_data:/data
+    mem_limit: 8g
+    cpus: 4.0
+
+networks:
+  vectorbench-net:
+    driver: bridge
